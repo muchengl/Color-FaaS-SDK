@@ -1,0 +1,16 @@
+output
+.idea
+.tmp
+.vscode
+build
+cron_jobs_log
+coverage
+*.log*
+scheduler_id.txt
+task_id.txt
+stderr
+stdout
+*.pyc
+main
+flock*
+tasks
