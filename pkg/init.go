@@ -3,12 +3,12 @@ package cfaas
 import (
 	"context"
 	"encoding/json"
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/protocol/consts"
 	"log"
 	"reflect"
 )
-import "github.com/cloudwego/hertz/pkg/app"
-import "github.com/cloudwego/hertz/pkg/app/server"
-import "github.com/cloudwego/hertz/pkg/protocol/consts"
 
 const (
 	codeFunctionPanic    = 512
@@ -18,35 +18,37 @@ const (
 	unknownError         = 590
 )
 
-type runtime struct {
-	fun interface{}
+type funcRuntime struct {
+	fun    interface{}
+	server server.Hertz
 }
 
 func Run(function interface{}) {
 	// init env
-	runt := runtime{
+	runt := funcRuntime{
 		fun: function,
 	}
 	runt.launchServer()
 }
 
-func (r *runtime) launchServer() {
+func (r *funcRuntime) launchServer() {
 	h := server.Default()
+	r.server = *h
 
 	h.GET("/heartbeat", r.heartbeat)
 	h.GET("/invoke", r.invokeGet)
 	h.POST("/invoke", r.invokePost)
-	h.GET("/exit", r.exit)
+	h.GET("/quit", r.exit)
 
 	h.Spin()
 }
 
-func (r *runtime) heartbeat(ctx context.Context, c *app.RequestContext) {
+func (r *funcRuntime) heartbeat(ctx context.Context, c *app.RequestContext) {
 	c.String(consts.StatusOK, "ok")
 }
 
 // invokeGet get interface, debug only
-func (r *runtime) invokeGet(ctx context.Context, c *app.RequestContext) {
+func (r *funcRuntime) invokeGet(ctx context.Context, c *app.RequestContext) {
 	// get invoke context
 	umsg := c.Query("umsg")
 	log.Default().Printf("user msg: %s", umsg)
@@ -59,7 +61,7 @@ func (r *runtime) invokeGet(ctx context.Context, c *app.RequestContext) {
 	r.invoke(ctx, c, args)
 }
 
-func (r *runtime) invokePost(ctx context.Context, c *app.RequestContext) {
+func (r *funcRuntime) invokePost(ctx context.Context, c *app.RequestContext) {
 	req := funcInvokeRequest{}
 	if err := c.Bind(&req); err != nil {
 		c.String(consts.StatusOK, string(codeInitializerPanic))
@@ -76,7 +78,7 @@ func (r *runtime) invokePost(ctx context.Context, c *app.RequestContext) {
 }
 
 // todo for invoke, if user's code get a panic. sdk need to handle this, sdk can't panic.
-func (r *runtime) invoke(ctx context.Context, c *app.RequestContext, args []reflect.Value) {
+func (r *funcRuntime) invoke(ctx context.Context, c *app.RequestContext, args []reflect.Value) {
 	// run function and get res
 	function := reflect.ValueOf(r.fun)
 	result := function.Call(args)
@@ -94,6 +96,6 @@ func (r *runtime) invoke(ctx context.Context, c *app.RequestContext, args []refl
 	c.String(consts.StatusOK, string(responseByte))
 }
 
-func (r *runtime) exit(ctx context.Context, c *app.RequestContext) {
-	panic(ctx)
+func (r *funcRuntime) exit(ctx context.Context, c *app.RequestContext) {
+	r.server.Shutdown(ctx)
 }
